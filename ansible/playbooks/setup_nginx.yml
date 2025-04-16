@@ -1,0 +1,132 @@
+---
+# Playbook zur Konfiguration eines NGINX-Webservers
+
+- name: Konfiguriere NGINX auf den Webservern
+  hosts: webservers
+  become: yes
+
+  vars:
+    nginx_site_template: "templates/nginx_site.conf.j2"
+    website_name: "terraform-ansible-demo"
+    website_domain: "example.com" # Nur für Demonstrationszwecke
+
+  tasks:
+    - name: Aktualisiere Paketlisten
+      dnf:
+        update_cache: yes
+      changed_when: false
+
+    - name: Alternative Methode - Aktiviere Amazon Extras (falls vorhanden)
+      shell: amazon-linux-extras enable nginx1
+      register: extras_result
+      changed_when: extras_result.rc == 0
+      failed_when: false
+
+    - name: Installiere NGINX
+      dnf:
+        name: nginx
+        state: present
+
+    - name: Erstelle Webserver-Verzeichnis
+      file:
+        path: "/var/www/{{ website_name }}"
+        state: directory
+        owner: nginx
+        group: nginx
+        mode: "0755"
+
+    - name: Erstelle Beispiel-Index-Seite
+      copy:
+        dest: "/var/www/{{ website_name }}/index.html"
+        content: |
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Erfolgreich mit Terraform + Ansible!</title>
+            <style>
+              body {
+                width: 70%;
+                margin: 0 auto;
+                font-family: Tahoma, Verdana, Arial, sans-serif;
+              }
+              .container {
+                margin-top: 40px;
+                padding: 20px;
+                background-color: #f7f7f7;
+                border-radius: 5px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+              }
+              h1, h2 {
+                color: #0066cc;
+              }
+              .tech-info {
+                background-color: #e6f3ff;
+                padding: 15px;
+                border-radius: 3px;
+                margin-top: 20px;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1>Terraform + Ansible Demo (Aktualisiert)</h1>
+              <p>Diese Seite wurde automatisch bereitgestellt und aktualisiert durch:</p>
+              <h1>Terraform + Ansible Demo</h1>
+              <p>Diese Seite wurde automatisch bereitgestellt durch:</p>
+              <ul>
+                <li>Terraform für die Infrastrukturerstellung</li>
+                <li>Ansible für die Serverkonfiguration</li>
+              </ul>
+              
+              <div class="tech-info">
+                <h2>Server-Informationen:</h2>
+                <p>Hostname: {{ ansible_hostname }}</p>
+                <p>IP-Adresse: {{ ansible_default_ipv4.address }}</p>
+                <p>Betriebssystem: {{ ansible_distribution }} {{ ansible_distribution_version }}</p>
+                <p>Bereitgestellt am: {{ ansible_date_time.date }}</p>
+              </div>
+              <div class="update-info" style="background-color: #e8f5e9; padding: 15px; border-radius: 3px; margin-top: 20px;">
+                <h2>Update-Informationen:</h2>
+                <p>Letzte Aktualisierung: {{ ansible_date_time.iso8601 }}</p>
+                <p>Dies demonstriert, wie einfach Konfigurationsänderungen mit Ansible sind!</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        owner: nginx
+        group: nginx
+        mode: "0644"
+
+    - name: Konfiguriere NGINX-Default-Site
+      copy:
+        dest: /etc/nginx/conf.d/default.conf
+        content: |
+          server {
+              listen 80 default_server;
+              listen [::]:80 default_server;
+              
+              root /var/www/{{ website_name }};
+              index index.html;
+              
+              server_name _;
+              
+              location / {
+                  try_files $uri $uri/ =404;
+              }
+          }
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart NGINX
+
+    - name: Starte NGINX und aktiviere beim Systemstart
+      service:
+        name: nginx
+        state: started
+        enabled: yes
+
+  handlers:
+    - name: Restart NGINX
+      service:
+        name: nginx
+        state: restarted
